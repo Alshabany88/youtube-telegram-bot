@@ -25,4 +25,4 @@
 4. أمر التشغيل: `python telegram_bot.py`
 
 ## المتطلبات 📦
-انظر ملف `requirements.txt`
+انظر ملف `requirements.txt``
