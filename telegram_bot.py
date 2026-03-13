@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import os
 import logging
 import googleapiclient.discovery
@@ -7,9 +7,35 @@ import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# --- تم وضع التوكن الجديد هنا ---
-TELEGRAM_TOKEN = '8501521808:AAGzyCcrcFF4iKKUC--meWT_GKVT_s0s26M'  # ✅ التوكن الجديد
-YOUTUBE_API_KEY = 'AIzaSyDbSRy8bF22VMmvytE1Z2qFJDu2e-RRBrU'  # مفتاح يوتيوب الخاص بك
+# ========== إعدادات Flask للـ Health Check ==========
+from flask import Flask
+import threading
+
+# إنشاء تطبيق Flask صغير للـ Health Check
+app = Flask(__name__)
+
+@app.route('/')
+@app.route('/health')
+@app.route('/healthcheck')
+def health():
+    return "OK", 200
+
+# تشغيل Flask في Thread منفصل
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+threading.Thread(target=run_flask, daemon=True).start()
+# ==================================================
+
+# ========== متغيرات البيئة ==========
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
+
+# التأكد من وجود المتغيرات
+if not TELEGRAM_TOKEN or not YOUTUBE_API_KEY:
+    print("❌ خطأ: تأكد من تعيين متغيرات البيئة TELEGRAM_TOKEN و YOUTUBE_API_KEY")
+    exit(1)
+# ==================================
 
 # إعدادات logging
 logging.basicConfig(
@@ -17,6 +43,17 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# دالة لتنظيف النص من علامات Markdown الخاصة
+def clean_markdown(text):
+    """تنظيف النص من الأحرف التي قد تسبب مشاكل في Markdown"""
+    if not text:
+        return text
+    # استبدال الأحرف الخاصة
+    chars_to_escape = ['_', '*', '`', '[']
+    for char in chars_to_escape:
+        text = text.replace(char, '\\' + char)
+    return text
 
 # دالة استخراج روابط وعناوين قائمة التشغيل
 async def get_playlist_videos(playlist_id):
@@ -205,14 +242,14 @@ async def channel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         num_videos = len(videos)
         
         # إرسال ملخص
-        summary = f"✅ **{channel_title}**\n"
+        summary = f"✅ **{clean_markdown(channel_title)}**\n"
         summary += f"📊 تم العثور على **{num_videos} فيديو** في القناة.\n\n"
         summary += "📌 **أحدث 5 فيديوهات:**\n"
         
         for i, (title, url) in enumerate(videos[:5], 1):
-            # تقصير العنوان إذا كان طويلاً
-            short_title = title[:50] + "..." if len(title) > 50 else title
-            summary += f"{i}. [{short_title}]({url})\n"
+            # تنظيف العنوان من علامات Markdown
+            clean_title = clean_markdown(title[:50] + "..." if len(title) > 50 else title)
+            summary += f"{i}. [{clean_title}]({url})\n"
         
         await processing_msg.edit_text(summary, parse_mode='Markdown')
         
@@ -233,7 +270,7 @@ async def channel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_document(
                 document=f,
                 filename=filename,
-                caption=f"📥 ملف يحتوي على {num_videos} فيديو من قناة {channel_title}"
+                caption=f"📥 ملف يحتوي على {num_videos} فيديو من قناة {clean_markdown(channel_title)}"
             )
         
         # حذف الملف المؤقت
@@ -271,13 +308,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             num_videos = len(videos)
             
-            summary = f"✅ **{channel_title}**\n"
+            summary = f"✅ **{clean_markdown(channel_title)}**\n"
             summary += f"📊 تم العثور على **{num_videos} فيديو**.\n\n"
             summary += "📌 **أحدث 5 فيديوهات:**\n"
             
             for i, (title, url) in enumerate(videos[:5], 1):
-                short_title = title[:50] + "..." if len(title) > 50 else title
-                summary += f"{i}. [{short_title}]({url})\n"
+                clean_title = clean_markdown(title[:50] + "..." if len(title) > 50 else title)
+                summary += f"{i}. [{clean_title}]({url})\n"
             
             await processing_msg.edit_text(summary, parse_mode='Markdown')
             
@@ -298,7 +335,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_document(
                     document=f,
                     filename=filename,
-                    caption=f"📥 ملف يحتوي على {num_videos} فيديو من قناة {channel_title}"
+                    caption=f"📥 ملف يحتوي على {num_videos} فيديو من قناة {clean_markdown(channel_title)}"
                 )
             
             os.remove(filename)
@@ -342,8 +379,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             summary = f"✅ تم العثور على {num_videos} فيديو.\n\n"
             summary += "📊 **أول 5 فيديوهات:**\n"
             for i, (title, url) in enumerate(videos[:5], 1):
-                short_title = title[:50] + "..." if len(title) > 50 else title
-                summary += f"{i}. [{short_title}]({url})\n"
+                clean_title = clean_markdown(title[:50] + "..." if len(title) > 50 else title)
+                summary += f"{i}. [{clean_title}]({url})\n"
             
             await processing_msg.edit_text(summary, parse_mode='Markdown')
             
@@ -388,12 +425,12 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # تشغيل البوت
-    print("🤖 البوت المطور يعمل الآن... اضغط Ctrl+C للإيقاف")
-    print("✅ الميزات الجديدة:")
-    print("   - عرض عناوين الفيديوهات مع الروابط")
-    print("   - استخراج فيديوهات قناة كاملة (@username)")
-    print("   - إرسال ملف نصي لجميع النتائج (حتى لو كان عدد الفيديوهات قليلاً)")
-    print("   - أمر /about مع معلومات عن البوت")
+    print("=" * 60)
+    print("🤖 بوت استخراج روابط يوتيوب مع Health Check")
+    print("📡 يعمل على Render مع YouTube API")
+    print(f"✅ توكن البوت: {TELEGRAM_TOKEN[:10]}... (مخفي)")
+    print(f"✅ مفتاح API: {YOUTUBE_API_KEY[:10]}... (مخفي)")
+    print("=" * 60)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
